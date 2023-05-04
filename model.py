@@ -12,6 +12,7 @@ import fasttext
 import fasttext.util
 import pandas as pd
 
+fasttext_model = fasttext.load_model('cc.ru.300.bin')
 
 def nltk2wn_tag(nltk_tag):
     if nltk_tag.startswith('J'):
@@ -128,8 +129,6 @@ def get_common_job(professions):
 def process_text(text):
     with open('catboost_classifier.pkl', 'rb') as f:
         classifier = pickle.load(f)
-
-    fasttext_model = fasttext.load_model('cc.ru.300.bin')
 
     csv_file = 'train.csv'
     df = pd.read_csv(csv_file)

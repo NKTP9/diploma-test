@@ -1,3 +1,4 @@
+import model
 import csv
 import io
 import pickle
@@ -9,22 +10,12 @@ from nltk.stem import SnowballStemmer, WordNetLemmatizer
 from nltk.corpus import wordnet
 import streamlit as st
 import docx
-import joblib
 import numpy as np
-from catboost import CatBoostClassifier
-import fasttext
 import fasttext.util
-import sklearn
-
+import warnings
+import pandas as pd
 
 def nltk2wn_tag(nltk_tag):
-    """
-    Эта функция используется для преобразования тегов частей речи,
-    используемых в библиотеке NLTK (такие как 'JJ', 'VB', 'NN' и 'RB'),
-    в теги частей речи WordNet (ADJ, VERB, NOUN и ADV соответственно),
-    которые используются в библиотеке NLTK WordNet.
-    Это необходимо для правильного лемматизации слов, поскольку WordNet использует теги частей речи для определения базовых
-    форм слов (лемм)."""
     if nltk_tag.startswith('J'):
         return wordnet.ADJ
     elif nltk_tag.startswith('V'):
@@ -96,20 +87,7 @@ def csv_to_dict(csv_file_path):
     return dictionary
 
 
-# Скачиваем Русскую модель
-fasttext.util.download_model('ru', if_exists='ignore')
-
-# Загружаем готовые FastText эмбединги
-fasttext_model = fasttext.load_model('cc.ru.300.bin')
-
-
-def fasttext_vectorizer(texts):
-    """
-    Данная функция векторизует текстовые данные с помощью предобученной модели FastText,
-    которая преобразует тексты в векторы фиксированной размерности.
-    Входным параметром является список текстов, на выходе функция возвращает массив с векторными представлениями текстов,
-    где каждая строка соответствует одному тексту. Каждый вектор имеет размерность,
-    равную размерности пространства эмбеддингов, которое определяется моделью FastText."""
+def fasttext_vectorizer(texts, fasttext_model):
     embeddings = np.zeros((len(texts), fasttext_model.get_dimension()))
     for i, text in enumerate(texts):
         embeddings[i] = fasttext_model.get_sentence_vector(text)
@@ -126,14 +104,45 @@ def get_highest_probability(prediction_proba):
     return "{:.2f}%".format(highest_probability_pct)
 
 
-st.title("Candidate Selection Tool")
+def group_jobs_by_label(df):
+    label_groups = {}
+    for label in df['target'].unique():
+        label_df = df[df['target'] == label]
+        label_df['name'] = label_df['name'].apply(lambda x: re.sub(r'\(.*\)', '', x.strip()).capitalize())
+        common_job = get_common_job(label_df['name'])
+        label_groups[label] = common_job
+    return label_groups
 
-st.subheader("NLP Based Resume Screening")
 
-st.caption(
-    "Aim of this project is to check whether a candidate is qualified for a role based his or her education, experience, and other information captured on their resume. In a nutshell, it's a form of pattern matching between a job's requirements and the qualifications of a candidate based on their resume.")
+def get_common_job(professions):
+    common_job = None
+    for profession in professions:
+        if common_job is None:
+            common_job = profession
+        elif common_job not in profession:
+            common_job = None
+            break
+    if common_job is None:
+        common_job = professions.iloc[0]
+    return common_job.capitalize()
 
-uploadedResume = st.file_uploader("Upload resume", type="docx")
+warnings.filterwarnings("ignore")
+
+st.set_page_config(page_title="Скрининг резюме")
+
+st.title("Система автоматического скрининга резюме")
+
+st.caption("""Наша система позволяет сканировать текстовый файл формата DOCX и подготавливать его для классификации 
+моделью. После анализа резюме система определяет, какой вакансии соответствует данный документ и насколько точно он 
+соответствует требованиям, описанным в вакансии.
+Для того, чтобы воспользоваться системой, необходимо загрузить файл формата DOCX. После загрузки 
+файла, система считывает его содержимое и обрабатывает текст. Классификатор определяет, 
+какая работа лучше всего подходит для данного резюме и насколько оно соответствует описанию каждой вакансии. В 
+случае, если система определяет, что резюме подходит для конкретной вакансии, она выводит соответствующую информацию. 
+Наша система может быть полезна для тех, кто ищет работу и хочет определить, на какие вакансии стоит 
+подавать резюме, а также для работодателей, которые хотят автоматизировать процесс отбора резюме.""")
+
+uploadedResume = st.file_uploader("Загрузите резюме в формате DOCX", type="docx")
 
 click = st.button("Process")
 
@@ -142,28 +151,32 @@ try:
         resumeBytes = uploadedResume.read()
         resumeDoc = docx.Document(io.BytesIO(resumeBytes))
         resumeText = '\n'.join([para.text for para in resumeDoc.paragraphs])
-        st.write(resumeText)
 except Exception as e:
     st.warning("Error: {}".format(e))
 
+fasttext_model = fasttext.load_model('cc.ru.300.bin')
+
+csv_file = 'train.csv'
+df = pd.read_csv(csv_file)
+
+job_dict = model.group_jobs_by_label(df)
+
 if click:
-    with open('pipeline.pkl', 'rb') as f:
-        pipeline = pickle.load(f)
+    with open('catboost_classifier.pkl', 'rb') as f:
+        classifier = pickle.load(f)
 
-    ready_text = preprocess_text(resumeText)
-    prediction = pipeline.predict([ready_text])
+    resumeText = model.docx_to_text('Resume1.docx')
 
-    job_dict = csv_to_dict('dictionary.csv')
+    ready_text = model.preprocess_text(resumeText)
+    vectorized_text = model.fasttext_vectorizer([ready_text], fasttext_model)
+    prediction = classifier.predict(vectorized_text)
+    prediction_proba = classifier.predict_proba(vectorized_text)
 
-    classifier = CatBoostClassifier(iterations=100, eval_metric='Accuracy', use_best_model=True, random_seed=19)
-    vectorized_text = fasttext_vectorizer([ready_text])
-    prediction_proba = pipeline.predict_proba(vectorized_text)
-    print(prediction_proba)
-
-    label_prob = get_highest_probability(prediction_proba)
+    label_prob = model.get_highest_probability(prediction_proba)
     label_num = prediction.item()
 
     if label_num in job_dict:
-        print("Вы подходите на вакансию \"" + prediction + "\". Соответствие вашего резюме описанию: " + label_prob)
+        st.write("Ваша подходящая вакансия - " + job_dict[label_num]
+                 + ". Соответствие вашего резюме описанию: " + label_prob)
     else:
-        print('Error: label not found in dictionary.')
+        st.write('Ошибка, резюме не было обработано корректно. Скорее всего, оно не подходит под нашу систему...')

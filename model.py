@@ -11,6 +11,9 @@ import numpy as np
 import fasttext
 import fasttext.util
 import pandas as pd
+import warnings
+warnings.filterwarnings("ignore")
+
 
 fasttext_model = fasttext.load_model('cc.ru.300.bin')
 

@@ -10,19 +10,18 @@ bot = telebot.TeleBot(TOKEN)
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    welcome_text = """Добро пожаловать в Обработчик Резюме! Пришлите мне ваше резюме в формате DOCX, и я подскажу, на какую профессию вы лучше всего подойдёте!"""
+    welcome_text = """Добро пожаловать в Обработчик Резюме! Пришлите ваше резюме в формате DOCX, нажав на скрепку в поле чата и выбрав файл, и система подберёт наилучшее совпадение!"""
     bot.reply_to(message, welcome_text)
 
 
 @bot.message_handler(content_types=['text'])
 def process_message(message):
-    bot.reply_to(message, "Я пока понимаю и принимаю резюме в формате DOCX. Пришлите мне его скорее!")
+    bot.reply_to(message, "В настоящее время система принимает только файлы в формате DOCX. Пришлите файл, нажав на скрепку в поле чата!")
 
 
 @bot.message_handler(content_types=['document'])
 def process_document(message):
     print("Сообщение принято...")
-    bot.reply_to(message, "Мои мыслительные процессы начали обрабатывать ваше резюме... Это может занять время, ожидайте!")
     if message.document.mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
         file_info = bot.get_file(message.document.file_id)
         downloaded_file = bot.download_file(file_info.file_path)
@@ -41,7 +40,7 @@ def process_document(message):
         bot_response = model.process_text(text)
         bot.reply_to(message, bot_response)
     else:
-        bot.reply_to(message, "Я пока понимаю и принимаю ваше резюме в формате DOCX. Пришлите мне его скорее!")
+        bot.reply_to(message, "В настоящее время система принимает только файлы в формате DOCX. Пришлите файл, нажав на скрепку в поле чата!")
 
 
 if __name__ == "__main__":

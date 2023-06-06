@@ -1,17 +1,16 @@
 import csv
 import pickle
-import nltk
 import re
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
-from nltk.stem import SnowballStemmer, WordNetLemmatizer
-from nltk.corpus import wordnet
-import docx
-import numpy as np
-import fasttext
-import fasttext.util
-import pandas as pd
 import warnings
+
+import docx
+import fasttext.util
+import nltk
+import numpy as np
+from nltk.corpus import stopwords
+from nltk.corpus import wordnet
+from nltk.stem import SnowballStemmer, WordNetLemmatizer
+from nltk.tokenize import word_tokenize
 warnings.filterwarnings("ignore")
 
 
@@ -76,16 +75,11 @@ def get_highest_probability(prediction_proba):
     return "{:.2f}%".format(highest_probability_pct)
 
 
-def csv_to_dict(csv_file_path):
-    with open(csv_file_path, 'r') as file:
-        reader = csv.DictReader(file)
-        dictionary = {}
-        for row in reader:
-            for key, value in row.items():
-                if key in dictionary:
-                    dictionary[key].append(value)
-                else:
-                    dictionary[key] = [value]
+def csv_to_dict(file_name):
+    with open(file_name, mode='r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        next(reader)  # пропускаем заголовок
+        dictionary = {int(rows[0]):rows[1] for rows in reader}
     return dictionary
 
 
@@ -96,47 +90,11 @@ def fasttext_vectorizer(texts, fasttext_model):
     return embeddings
 
 
-def get_highest_probability(prediction_proba):
-    class_probabilities = prediction_proba[0]
-    class_probabilities_pct = class_probabilities * 100
-
-    highest_probability_index = np.argmax(class_probabilities_pct)
-    highest_probability_pct = class_probabilities_pct[highest_probability_index]
-
-    return "{:.2f}%".format(highest_probability_pct)
-
-
-def group_jobs_by_label(df):
-    label_groups = {}
-    for label in df['target'].unique():
-        label_df = df[df['target'] == label]
-        label_df['name'] = label_df['name'].apply(lambda x: re.sub(r'\(.*\)', '', x.strip()).capitalize())
-        common_job = get_common_job(label_df['name'])
-        label_groups[label] = common_job
-    return label_groups
-
-
-def get_common_job(professions):
-    common_job = None
-    for profession in professions:
-        if common_job is None:
-            common_job = profession
-        elif common_job not in profession:
-            common_job = None
-            break
-    if common_job is None:
-        common_job = professions.iloc[0]
-    return common_job.capitalize()
-
-
 def process_text(text):
     with open('catboost_classifier.pkl', 'rb') as f:
         classifier = pickle.load(f)
 
-    csv_file = 'train.csv'
-    df = pd.read_csv(csv_file)
-
-    job_dict = group_jobs_by_label(df)
+    job_dict = csv_to_dict('dictionary.csv')
 
     ready_text = preprocess_text(text)
     vectorized_text = fasttext_vectorizer([ready_text], fasttext_model)
@@ -147,7 +105,7 @@ def process_text(text):
     label_num = prediction.item()
 
     if label_num in job_dict:
-        return r'Ух ты! А вы на что-то пригодны! А пригодны вы на такую замечательную профессию, как "' + job_dict[
-            label_num] + '" на все ' + label_prob + '. Прекрасный результат!'
+        return r'Ваше присланное резюме было обработано. Исходя из результатов предсказания, вы больше всего ' \
+               r'подходите на профессию "' + job_dict[label_num] + '" с точностью ' + label_prob + '.'
     else:
-        return r'Вот незадача, ваше резюме не было обработано. Скорее всего, оно не подходит под нашу систему...'
+        return r'Ваше резюме не было обработано, попробуйте снова'

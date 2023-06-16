@@ -11,11 +11,14 @@ from nltk.corpus import stopwords
 from nltk.corpus import wordnet
 from nltk.stem import SnowballStemmer, WordNetLemmatizer
 from nltk.tokenize import word_tokenize
+
 warnings.filterwarnings("ignore")
 
-
+# Предзагрузка векторизатора FastText
 fasttext_model = fasttext.load_model('cc.ru.300.bin')
 
+
+# Метод определения части речи слова
 def nltk2wn_tag(nltk_tag):
     if nltk_tag.startswith('J'):
         return wordnet.ADJ
@@ -29,6 +32,7 @@ def nltk2wn_tag(nltk_tag):
         return None
 
 
+# Метод предобработки текста: токенизация, нормализация, лемматизация, удаление стоп-слов
 def preprocess_text(text):
     # удаление HTML/XML тэгов
     text = re.sub('<[^>]+>', '', text)
@@ -57,6 +61,7 @@ def preprocess_text(text):
     return ' '.join(lemmatized_words)
 
 
+# Метод преобразования DOCX-файла в текст
 def docx_to_text(file_path):
     document = docx.Document(file_path)
     text = ""
@@ -65,6 +70,7 @@ def docx_to_text(file_path):
     return text
 
 
+# Метод получения самого высокого процента вакансии
 def get_highest_probability(prediction_proba):
     class_probabilities = prediction_proba[0]
     class_probabilities_pct = class_probabilities * 100
@@ -75,14 +81,16 @@ def get_highest_probability(prediction_proba):
     return "{:.2f}%".format(highest_probability_pct)
 
 
+# Метод преобразования csv-файла с профессиями в словарь
 def csv_to_dict(file_name):
     with open(file_name, mode='r', encoding='utf-8') as f:
         reader = csv.reader(f)
-        next(reader)  # пропускаем заголовок
-        dictionary = {int(rows[0]):rows[1] for rows in reader}
+        next(reader)
+        dictionary = {int(rows[0]): rows[1] for rows in reader}
     return dictionary
 
 
+# Метод преобразования текста в числовые векторы
 def fasttext_vectorizer(texts, fasttext_model):
     embeddings = np.zeros((len(texts), fasttext_model.get_dimension()))
     for i, text in enumerate(texts):
@@ -90,6 +98,7 @@ def fasttext_vectorizer(texts, fasttext_model):
     return embeddings
 
 
+# Основной метод модели машинного обучения
 def process_text(text):
     with open('catboost_classifier.pkl', 'rb') as f:
         classifier = pickle.load(f)
